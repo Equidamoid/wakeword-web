@@ -3,15 +3,19 @@ import sys
 import logging
 import time
 
-
+logging.basicConfig(format='%(message)s')
 def main():
-    name = sys.argv[1]
-    available_scenarios = [i.name for i in scenarios.scenarios]
+    scenario_names = [i.name for i in scenarios.scenarios]
+    try:
+        name = sys.argv[1]
+    except IndexError:
+        logging.error("Usage: %s <scenario_name>\n  available scenarios: %r", sys.argv[0], scenario_names)
+        return
 
     try:
         scenario = [i for i in scenarios.scenarios if i.name == name][0]
     except:
-        logging.error("No such scenario: %r, available scenarios: %r", name, available_scenarios)
+        logging.error("No such scenario: %r, available scenarios: %r", name, scenario_names)
         raise
 
     print(f"Scenario {scenario.name}: '{scenario.description}'")
