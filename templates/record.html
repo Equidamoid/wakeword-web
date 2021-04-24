@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+</head>
+<body>
+<script>
+window.onload = function(){
+    const player = document.getElementById('player');
+    const dev_select = document.getElementById('audio_dev_select');
+    const start_btn = document.getElementById('start_recording');
+    const error_block = document.getElementById('error');
+    const header_block = document.getElementById('header');
+    const text_block = document.getElementById('text');
+    const config_block = document.getElementById('config_block');
+    const stats_block = document.getElementById('stats');
+    console.log("init");
+
+    var session_id = "{{ session_id }}";
+    var record_script = {{ record_script | tojson }};
+    var sample_rate = null;
+    var aborted = false;
+
+    console.log("Recording session", session_id);
+    console.log("Recording script", record_script);
+
+    var sampleCnt = 0;
+
+    var pending_requests = [];
+    var pending_buffers = [];
+
+    function sendPending(start_sample, buffers){
+
+        var total_samples = 0;
+        buffers.forEach((buf) =>{
+            total_samples += buf.length;
+        });
+        {#console.log("total len", total_samples);#}
+        var concat = new Float32Array(total_samples);
+        var off = 0;
+        buffers.forEach((buf) =>{
+            concat.set(buf, off);
+            off += buf.length;
+            total_samples += buf.length;
+        });
+        req_data = {
+            start: start_sample,
+            data: concat
+        };
+        // TODO retry?
+        // pending_requests.push(req_data);
+        upload_pending(req_data)
+    }
+
+    function abort_recording(error_text){
+        error_block.innerHTML = `ERROR: ${error_text}`
+        aborted = true;
+    }
+
+    function upload_pending(req){
+        var start = req.start;
+        var data = req.data;
+        {#console.log("Sending, sample count:", data.length);#}
+        window.fetch('/record/pcm/' + session_id + '/' + start,
+            {
+                method: 'POST',
+                body: data
+            }
+        ).then(response => {
+            {#console.log("data push ok, status: " + response.status);#}
+            if (response.status != 200){
+                abort_recording(`Can't stream data, status code ${response.status}`);
+            }
+            // pending_requests.
+        }).catch(reason => {
+            console.log("ERROR", reason)
+        })
+    }
+
+    const on_stream_created = function(stream) {
+        console.log("success");
+        if (window.URL) {
+             player.srcObject = stream;
+        } else {
+            player.src = stream;
+        }
+        const context = new AudioContext();
+        const source = context.createMediaStreamSource(stream);
+        const processor = context.createScriptProcessor(1024, 1, 1);
+
+        source.connect(processor);
+        processor.connect(context.destination);
+
+        processor.onaudioprocess = function(e) {
+            if (aborted) return;
+
+            const data_ = e.inputBuffer.getChannelData(0);
+            var data = new Float32Array(data_.length);
+            data.set(data_, 0);
+            if (!sample_rate){
+                sample_rate = e.inputBuffer.sampleRate;
+                console.log("Sample rate", sample_rate);
+            }
+            if ((pending_buffers.length % 5) === 0){
+                var rms = compute_rms(data);
+                stats_block.innerHTML = `Signal level: ${Math.round(Math.log10(rms) * 10)} db<br>Total recording time ${sampleCnt / sample_rate} sec.`;
+            }
+            pending_buffers.push(data);
+            if (pending_buffers.length > 100){
+                sendPending(sampleCnt, pending_buffers);
+                pending_buffers = [];
+            }
+            sampleCnt += data.length;
+            // socket.send(data);
+        };
+    };
+
+    function compute_rms(data){
+        var mean = 0;
+        data.forEach((i)=>{mean += i});
+        mean /= data.length;
+        var meansq = 0;
+        data.forEach((i)=>{
+            var d = i - mean;
+            meansq += d * d;
+        });
+        return meansq / data.length;
+    }
+
+    function start_recording(dev_id){
+        navigator.mediaDevices.getUserMedia(
+        {
+            audio: {deviceId: dev_id},
+            video: false
+        }).then(on_stream_created);
+    }
+
+    navigator.mediaDevices.enumerateDevices().then((devices) => {
+        {#return;#}
+        var elems = "";
+        devices.forEach((dev_info) => {
+            if (dev_info.kind === 'audioinput'){
+                var name = dev_info.label;
+                if (name === ""){
+                    name = "(default)";
+                }
+
+                elems += `<option value="${dev_info.deviceId}">${name}</option>`
+            }
+        });
+        dev_select.innerHTML = elems;
+        devices = devices.filter((d) => d.kind === 'audioinput');
+        console.log(devices);
+        start_btn.onclick = (ev)=>{
+            config_block.style.visibility = "hidden";
+            start_recording(dev_select.name);
+            process_step()
+        };
+        {#start_recording(devices[1].deviceId)#}
+    });
+
+    function send_label(name){
+        if (aborted) return;
+        console.log(`Will send label ${name} @${sampleCnt}`);
+        var data = {
+            label: name,
+            offset: sampleCnt,
+        }
+        window.fetch('/record/label/' + session_id,
+        {
+            method: 'POST',
+            body: JSON.stringify(data)
+        }
+        ).then(response => {
+            {#console.log("data push ok, status: " + response.status);#}
+            if (response.status != 200){
+                abort_recording(`Can't stream data, status code ${response.status}`);
+            }
+            // pending_requests.
+        }).catch(reason => {
+            console.log("ERROR", reason)
+        })
+    }
+
+    var next_step = 0;
+
+    var wait_status = {
+        step: null,
+        end_time: null,
+
+    };
+
+    function process_step(){
+        if (next_step > record_script.length - 1){
+            abort_recording("Done!")
+        }
+        send_label(`step_${next_step}`);
+        var step = record_script.script[next_step];
+        next_step += 1;
+        console.log("step ", step);
+        if (step.action === 'setprompt'){
+            header_block.innerHTML = step.prompt;
+            process_step()
+        }
+        if (step.action === 'wait'){
+            if (step.label){
+                send_label(`${step.label}_start`)
+            }
+            const wait_end = function(){
+                text_block.innerHTML = '';
+                process_step()
+            };
+            text_block.innerHTML = '<div id="wait_message"></div>';
+
+            if (step.fast_forward_button){
+                console.log("FF", step.fast_forward_button, step)
+                text_block.innerHTML += `<br/><button id="fast_forward">${step.fast_forward_button}</button>`
+                var ff_btn = document.getElementById('fast_forward');
+                ff_btn.onclick = ()=>{
+                    wait_end()
+                }
+            }
+            var wait_msg = document.getElementById('wait_message');
+            if (step.timeout){
+                {#text_block.innerHTML = `Waiting for ${step.timeout} sec...`#}
+
+                wait_status.end_time = Date.now() / 1000 + step.timeout;
+                wait_status.step = next_step;
+                var start = Date.now();
+                window.setTimeout(()=>{
+                    if (wait_status.step !== next_step){
+                        console.log("ingoring timer")
+                    } else {
+                        if (step.label){
+                            send_label(`${step.label}_end`)
+                        }
+                        wait_end();
+                    }
+                }, step.timeout * 1000);
+
+                var text_poll = window.setInterval(()=>{
+                    var now = Date.now() / 1000;
+                    var time_left = (wait_status.end_time - now);
+                    if (now > wait_status.end_time){
+                        window.clearInterval(text_poll);
+                    } else {
+                        wait_msg.innerHTML = `${Math.round(time_left * 10) / 10} sec left...`
+                    }
+                }, 200);
+            }
+        }
+    }
+};
+
+</script>
+Recording session {{ session_id }}.<br/>
+<div id="config_block">
+    <div id="error"></div>
+    Select your microphone and click "Start":<br/>
+    <select id="audio_dev_select"><option>----<option></select>
+    <button id="start_recording">Start</button>
+</div>
+<div id="stats">
+
+</div>
+<br/>
+<div id="header"></div><br/>
+<div id="text"></div>
+
+<audio id="player"></audio>
+</body>
+</html>

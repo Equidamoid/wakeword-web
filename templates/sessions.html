@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Recording sessions</title>
+</head>
+<body>
+Hi {{ user.name }}!<br/>
+Your recorded sessions:<br/>
+{% for i in user.sessions %}
+    <a href="/sessions/{{ i.id }}">Session {{ i.id }}</a> ({{ i.stage_name }}) started {{ i.start_date }}: {{ i.chunks|length }} chunks recorded.
+{#    {% if not i.chunks %}#}
+    <a href="/sessions/record/{{ i.id }}">Resume/overwrite session</a>
+{#    {% endif %}#}
+    <br/>
+{% endfor %}
+<br/>
+Start new session:<br/>
+{% for i in scripts %}
+    <a href="/sessions/new/{{ i.name }}">{{ i.name }}</a> - {{ i.description }}<br/>
+{% endfor %}
+
+</body>
+</html>

@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+</head>
+<body>
+<h3>Available stages</h3>
+{% for i in stages %}
+    <a href="/record/{{ i.name }}">{{ i.name }}</a><br/>
+{% endfor %}
+
+</body>
+</html>

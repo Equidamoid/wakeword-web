@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+</head>
+<body>
+<script>
+window.onload = function(){
+    const player = document.getElementById('player');
+    console.log("init");
+
+    var sampleCnt = 0;
+
+    var pending_requests = [];
+    var pending_buffers = [];
+
+    function sendPending(start_sample, buffers){
+
+        var total_samples = 0;
+        buffers.forEach((buf) =>{
+        console.log("total len1", total_samples);
+            total_samples += buf.length;
+        });
+        console.log("total len", total_samples);
+        var concat = new Float32Array(total_samples);
+        var off = 0;
+        buffers.every((buf) =>{
+            concat.set(buf, off);
+            off += buf.length;
+            total_samples += buf.length;
+        });
+        req_data = {
+            start: start_sample,
+            data: concat
+        };
+        // TODO retry?
+        // pending_requests.push(req_data);
+        upload_pending(req_data)
+    }
+
+    function upload_pending(req){
+        var start = req.start;
+        var data = req.data;
+        console.log("Sending, sample count:", data.length)
+        window.fetch('/record/data?offset=' + start,
+            {
+                method: 'POST',
+                body: data
+            }
+        ).then(response => {
+            console.log("data push ok");
+            // pending_requests.
+        })
+    }
+
+    const on_stream_created = function(stream) {
+        console.log("success");
+        if (window.URL) {
+             player.srcObject = stream;
+        } else {
+            player.src = stream;
+        }
+        const context = new AudioContext();
+        const source = context.createMediaStreamSource(stream);
+        const processor = context.createScriptProcessor(1024, 1, 1);
+
+        source.connect(processor);
+        processor.connect(context.destination);
+
+        processor.onaudioprocess = function(e) {
+            buuu = e;
+        // Do something with the data, e.g. convert it to WAV
+        //     processor.disconnect();
+        //     source.disconnect();
+        //     console.log(e.inputBuffer);
+            const data = e.inputBuffer.getChannelData(0);
+            pending_buffers.push(data);
+            if (pending_buffers.length > 100){
+                sendPending(sampleCnt, pending_buffers);
+                pending_buffers = [];
+            }
+            sampleCnt += data.length;
+            // socket.send(data);
+        };
+    };
+
+    navigator.mediaDevices.enumerateDevices().then((devices) => {
+        devices = devices.filter((d) => d.kind === 'audioinput');
+        console.log(devices);
+        navigator.mediaDevices.getUserMedia(
+            {
+                audio: {deviceId: devices[1].deviceId},
+                video: false
+            }).then(on_stream_created);
+    });
+};
+
+</script>
+<audio id="player" controls></audio>
+</body>
+</html>

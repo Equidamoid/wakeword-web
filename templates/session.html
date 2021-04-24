@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Session info</title>
+</head>
+<body>
+
+Session id: {{ session.id }} <br/>
+Stage name: {{ session.stage_name }} <br/>
+
+Audio chunks: <br/>
+{% for i in session.chunks %}
+    Chunk {{ i.id }}: t = {{ '%.4f' % (i.offset / (session.sample_rate or 44100)) }} <a href="/session/{{ session.id }}/pcm/{{ i.id }}">download</a><br/>
+{% endfor %}
+
+Labels:<br/>
+{% for i in session.labels %}
+t = {{ '%.3f' % (i.offset / (session.sample_rate or 44100)) }}: {{ i.label }} <br/>
+{% endfor %}
+
+</body>
+</html>
