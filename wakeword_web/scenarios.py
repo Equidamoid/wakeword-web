@@ -98,7 +98,6 @@ def wakeword_variations():
         "closer or further away from your mic",
     ]
 
-
     return RecordingScenario(
         'wakeword_variations',
         'Variations of the wakeword',
@@ -124,11 +123,33 @@ def wakeword_variations():
     )
 
 
+def record_TV():
+    return RecordingScenario(
+        'record_TV',
+        'record TV for non-wakeword',
+        [
+            SetPrompt("now go watch some stuff"),
+            Wait(15 * 60, label="tv")
+        ])
+    
+
+def record_conversation():
+    return RecordingScenario(
+        'record_conversation',
+        'record real conversation for non-wakeword',
+        [
+        SetPrompt("enjoy your conversation"),
+        Wait(15 * 60, label="conversation")
+        ])
+
+
 scenarios = [
     make_wakeword(16),
     make_wakeword(32),
     make_wakeword(64),
     wakeword_variations(),
+    record_TV(),
+    record_conversation()
 ]
 
 
