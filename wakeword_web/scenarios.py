@@ -123,7 +123,7 @@ def wakeword_variations():
     )
 
 
-def record_TV():
+def record_tv():
     return RecordingScenario(
         'record_TV',
         'record TV for non-wakeword',
@@ -148,8 +148,8 @@ scenarios = [
     make_wakeword(32),
     make_wakeword(64),
     wakeword_variations(),
-    record_TV(),
-    record_conversation()
+    record_tv(),
+    record_conversation(),
 ]
 
 
